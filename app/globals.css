@@ -1,26 +1,30 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  body {
+    background-color: #FAF8F5;
+    color: #2D2A2E;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Custom Soft Color Utilities */
+.bg-cream { background-color: #FAF8F5; }
+.bg-warmcard { background-color: rgba(255, 255, 255, 0.85); }
+.text-charcoal { color: #2D2A2E; }
+
+.bg-rose-accent { background-color: #E08E9B; }
+.text-rose-accent { color: #E08E9B; }
+.bg-rose-soft { background-color: #FDF2F4; }
+
+.bg-sage-accent { background-color: #8FA89B; }
+.bg-sage-soft { background-color: #F0F4F2; }
+
+/* Frosted glass effect */
+.glass-card {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 8px 32px 0 rgba(190, 175, 165, 0.08);
 }
