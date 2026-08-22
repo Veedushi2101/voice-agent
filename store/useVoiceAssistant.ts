@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useShoppingStore } from './useShoppingStore';
 
 export function useVoiceAssistant() {
@@ -12,13 +12,17 @@ export function useVoiceAssistant() {
     setTranscript,
     addItem,
     removeItem,
+    updateQuantityByName,
     setSearchResults,
+    setSuggestions,
     setBudgetLimit,
   } = useShoppingStore();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const accumulatedTranscriptRef = useRef<string>('');
 
   const speak = useCallback((text: string) => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -52,54 +56,89 @@ export function useVoiceAssistant() {
 
       const data = await res.json();
 
-      if (data.action === 'ADD_BUNDLE' || data.action === 'ADD') {
-        if (Array.isArray(data.items)) {
-          data.items.forEach((item: any) => {
+      // Guarded Cart Additions: Only run if items array actually contains items
+      if ((data.action === 'ADD' || data.action === 'ADD_BUNDLE') && Array.isArray(data.items) && data.items.length > 0) {
+        data.items.forEach((item: any) => {
+          if (item && item.name && item.name.trim()) {
             addItem({
               name: item.name,
               quantity: Number(item.quantity) || 1,
-              unit: item.unit || undefined,
-              category: item.category || 'Other',
-              price: Number(item.price) || 80,
+              unit: item.unit || 'unit',
+              category: item.category || 'Pantry',
+              price: Number(item.price) || 60,
               image: item.image || '🛒',
+              brand: item.brand || undefined,
               substitutionNote: item.substitutionNote || undefined,
+              substituteSuggestion: item.substituteSuggestion || undefined,
             });
-          });
-        }
-      } else if (data.action === 'SET_BUDGET' && data.budget_limit) {
-        setBudgetLimit(Number(data.budget_limit));
-      } else if (data.action === 'SEARCH') {
-        setSearchResults(data.search_results || [], cleanText);
+          }
+        });
       } else if (data.action === 'REMOVE' && Array.isArray(data.items)) {
         data.items.forEach((targetItem: any) => {
-          const match = items.find((i) => i.name.toLowerCase().includes(targetItem.name.toLowerCase()));
-          if (match) removeItem(match.id);
+          if (targetItem.name) removeItem(targetItem.name);
         });
+      } else if (data.action === 'UPDATE_QUANTITY' && data.update_target) {
+        updateQuantityByName(
+          data.update_target.name,
+          Number(data.update_target.new_quantity) || 1,
+          data.update_target.new_unit
+        );
+      } else if (data.action === 'SEARCH') {
+        setSearchResults(data.search_results || [], cleanText);
+      } else if (
+        (data.action === 'GET_SEASONAL' || 
+         data.action === 'GET_RUNNING_LOW' || 
+         data.action === 'GET_SUBSTITUTE' || 
+         data.action === 'GET_DEALS') &&
+        Array.isArray(data.suggestions)
+      ) {
+        setSuggestions(data.suggestions);
+      } else if (data.action === 'SET_BUDGET' && data.budget_limit) {
+        setBudgetLimit(Number(data.budget_limit));
       }
 
+      // Voice and text loopback confirmation
       if (data.ai_response_text) {
         setFeedbackMessage(data.ai_response_text);
         speak(data.ai_response_text);
       }
     } catch (err: any) {
-      console.error('Voice process error:', err);
-      setFeedbackMessage("Sorry, couldn't process that command.");
+      console.error('Voice assistant error:', err);
+      setFeedbackMessage("Couldn't process that command. Try again!");
     } finally {
       setIsProcessing(false);
     }
-  }, [items, purchaseHistory, selectedLanguage, addItem, removeItem, setSearchResults, setBudgetLimit, speak]);
+  }, [items, purchaseHistory, selectedLanguage, addItem, removeItem, updateQuantityByName, setSearchResults, setSuggestions, setBudgetLimit, speak]);
+
+  const stopListening = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        // ignore
+      }
+      recognitionRef.current = null;
+    }
+    setListening(false);
+  }, [setListening]);
 
   const toggleListening = useCallback(async () => {
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
-      setListening(false);
+      const finalRecorded = accumulatedTranscriptRef.current;
+      stopListening();
+      if (finalRecorded) {
+        processTranscript(finalRecorded);
+      }
       return;
     }
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert('Speech recognition is supported in Google Chrome or Microsoft Edge.');
+      alert('Speech recognition is supported in Google Chrome, Microsoft Edge, and Safari.');
       return;
     }
 
@@ -107,26 +146,41 @@ export function useVoiceAssistant() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach((t) => t.stop());
 
+      accumulatedTranscriptRef.current = '';
       const recognition = new SpeechRecognition();
       recognition.lang = selectedLanguage;
-      recognition.continuous = false;
-      recognition.interimResults = false;
+      recognition.continuous = true;
+      recognition.interimResults = true;
 
       recognition.onstart = () => {
         setListening(true);
-        setFeedbackMessage('Listening... Speak naturally 🎙️');
+        setFeedbackMessage('Listening... Speak naturally (tap mic when done) 🎙️');
       };
 
       recognition.onresult = (event: any) => {
-        const captured = event.results[0][0].transcript;
-        setTranscript(captured);
-        processTranscript(captured);
+        let currentText = '';
+        for (let i = 0; i < event.results.length; ++i) {
+          currentText += event.results[i][0].transcript + ' ';
+        }
+
+        const trimmed = currentText.trim();
+        accumulatedTranscriptRef.current = trimmed;
+        setTranscript(trimmed);
+
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = setTimeout(() => {
+          stopListening();
+          if (accumulatedTranscriptRef.current) {
+            processTranscript(accumulatedTranscriptRef.current);
+          }
+        }, 2500);
       };
 
-      recognition.onerror = () => {
-        setListening(false);
-        recognitionRef.current = null;
-        setFeedbackMessage('Microphone access interrupted.');
+      recognition.onerror = (event: any) => {
+        if (event.error !== 'no-speech') {
+          setFeedbackMessage(`Voice error: ${event.error}`);
+          stopListening();
+        }
       };
 
       recognition.onend = () => {
@@ -137,10 +191,16 @@ export function useVoiceAssistant() {
       recognitionRef.current = recognition;
       recognition.start();
     } catch (err) {
-      setFeedbackMessage('Mic permission denied.');
-      setListening(false);
+      setFeedbackMessage('Microphone permission denied.');
+      stopListening();
     }
-  }, [selectedLanguage, setListening, setTranscript, processTranscript]);
+  }, [selectedLanguage, setListening, setTranscript, processTranscript, stopListening]);
+
+  useEffect(() => {
+    return () => {
+      stopListening();
+    };
+  }, [stopListening]);
 
   return {
     toggleListening,
