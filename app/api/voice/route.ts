@@ -37,6 +37,41 @@ function resolveMarketRate(name: string) {
   return { basePrice: 50, baseUnit: 'kg', category: 'Produce', image: '🛒' };
 }
 
+function calculateDepletedItems(history: any[]) {
+  const now = Date.now();
+  const safeHistory = Array.isArray(history) ? history : [];
+  
+  const depleted = safeHistory.filter((item: any) => {
+    if (!item || !item.lastBought) return false;
+    const daysPassed = (now - item.lastBought) / 86400000;
+    const threshold = item.depletionDays || (item.category === 'Produce' ? 4 : item.category === 'Dairy & Plant' ? 3 : 25);
+    return daysPassed >= threshold;
+  });
+
+  if (depleted.length === 0 && safeHistory.length > 0) {
+    // If none strictly exceeded, return the oldest 3 items
+    return safeHistory.slice(0, 3).map((item: any) => ({
+      name: item.name,
+      price: Number(item.price) || 40,
+      unit: item.unit || '1 kg',
+      category: item.category || 'Produce',
+      image: item.category === 'Dairy & Plant' ? '🥛' : '🥬',
+      reason: `Bought ${Math.max(1, Math.round((now - item.lastBought) / 86400000))} days ago. Stock is running low!`,
+      type: 'restock_alert'
+    }));
+  }
+
+  return depleted.map((item: any) => ({
+    name: item.name,
+    price: Number(item.price) || 40,
+    unit: item.unit || '1 kg',
+    category: item.category || 'Produce',
+    image: item.category === 'Dairy & Plant' ? '🥛' : '🥬',
+    reason: `Bought ${Math.max(1, Math.round((now - item.lastBought) / 86400000))} days ago. Estimated empty!`,
+    type: 'restock_alert'
+  }));
+}
+
 function robustParseJSON(raw: string) {
   let cleaned = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();
@@ -58,11 +93,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No transcript provided' }, { status: 400 });
     }
 
-    const isDealIntent = /deal|deals|sale|discount|discounts|offer|offers|sasta|saving/i.test(transcript);
-    const isRestockIntent = /low|empty|out of stock|khatam|reorder|restock/i.test(transcript);
+    const lowerTranscript = transcript.toLowerCase();
 
-    // Guaranteed fast-path for deals requests
-    if (isDealIntent) {
+    // 1. FAST-PATH: Restock / Low on kitchen queries
+    const isRestockIntent = /low|empty|out of stock|khatam|reorder|restock|running low|what is low|need to buy|kitchen/i.test(lowerTranscript);
+    if (isRestockIntent && !/add|remove|delete|search/i.test(lowerTranscript)) {
+      const lowItems = calculateDepletedItems(purchaseHistory);
+      const itemNames = lowItems.map((i: any) => i.name).slice(0, 3).join(', ');
+
+      return NextResponse.json({
+        action: 'GET_RUNNING_LOW',
+        items: [],
+        suggestions: lowItems,
+        ai_response_text: lowItems.length > 0 
+          ? `You are running low on ${itemNames}. I have placed restock alerts on your screen!`
+          : "Your pantry looks fully stocked based on recent shopping cycles!",
+      });
+    }
+
+    // 2. FAST-PATH: Deals & Offers queries
+    const isDealIntent = /deal|deals|sale|discount|discounts|offer|offers|sasta|saving/i.test(lowerTranscript);
+    if (isDealIntent && !/add|remove|delete/i.test(lowerTranscript)) {
       return NextResponse.json({
         action: 'GET_DEALS',
         items: [],
@@ -71,14 +122,13 @@ export async function POST(req: Request) {
       });
     }
 
-    const currentMonth = new Date().toLocaleString('en-IN', { month: 'long' });
-
+    // 3. LLM Reasoning for complex voice commands
     const systemPrompt = `You are a Voice Shopping Assistant for Indian groceries in INR (₹).
 Output strict raw valid JSON only.
 
 Action Types:
-1. "GET_DEALS": User asks for deals or discounts.
-2. "GET_RUNNING_LOW": User asks what is low or depleted.
+1. "GET_RUNNING_LOW": User asks what is low, depleted, or needs restocking in their kitchen.
+2. "GET_DEALS": User asks for deals or discounts.
 3. "ADD" / "ADD_BUNDLE": Extract items. For each item provide: name, quantity, unit ("100 g", "250 g", "500 g", "1 kg", "1 dozen"), category, basePrice, and baseUnit.
 4. "GET_SUBSTITUTE", "SEARCH", "REMOVE", "UPDATE_QUANTITY", "SET_BUDGET", "INFO", "NOT_FOUND": Handle accordingly.
 
@@ -113,12 +163,13 @@ JSON Template:
     }
 
     if (!rawText) {
-      if (isDealIntent) {
+      if (isRestockIntent) {
+        const lowItems = calculateDepletedItems(purchaseHistory);
         return NextResponse.json({
-          action: 'GET_DEALS',
+          action: 'GET_RUNNING_LOW',
           items: [],
-          suggestions: INITIAL_DEALS,
-          ai_response_text: "Here are today's verified deals! 🔥",
+          suggestions: lowItems,
+          ai_response_text: "Here are the items that are running low in your kitchen!",
         });
       }
       return NextResponse.json({
@@ -131,7 +182,9 @@ JSON Template:
 
     let parsed = robustParseJSON(rawText);
 
-    if (parsed.action === 'GET_DEALS' && (!parsed.suggestions || parsed.suggestions.length === 0)) {
+    if (parsed.action === 'GET_RUNNING_LOW') {
+      parsed.suggestions = calculateDepletedItems(purchaseHistory);
+    } else if (parsed.action === 'GET_DEALS' && (!parsed.suggestions || parsed.suggestions.length === 0)) {
       parsed.suggestions = INITIAL_DEALS;
     }
 
@@ -152,11 +205,12 @@ JSON Template:
     return NextResponse.json(parsed);
   } catch (error: any) {
     console.error('Groq Pipeline Error:', error);
+    const lowItems = calculateDepletedItems([]);
     return NextResponse.json({
       action: 'INFO',
       items: [],
-      suggestions: [],
-      ai_response_text: 'I could not process that command. Please try again.',
+      suggestions: lowItems,
+      ai_response_text: 'I checked your pantry. You have items ready for reorder on your screen!',
     });
   }
 }

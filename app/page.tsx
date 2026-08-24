@@ -357,7 +357,7 @@ export default function CompleteVoiceCart() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2 text-rose-950 font-bold text-xs uppercase tracking-wider">
                     <Clock className="w-4 h-4 text-rose-600" />
-                    <span>⚠️ Replenishment & Out-of-Stock Alerts (3+ Day Cycle)</span>
+                    <span>Replenishment & Out-of-Stock Alerts (3+ Day Cycle)</span>
                   </div>
                   <button onClick={clearSuggestions} className="text-stone-400 hover:text-stone-700"><X className="w-4 h-4" /></button>
                 </div>
@@ -710,62 +710,191 @@ export default function CompleteVoiceCart() {
         </div>
       </div>
 
-      {/* Voice & Weight Command Guide Modal */}
-      {showHelpModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 space-y-5 shadow-2xl border border-stone-200">
-            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-              <div className="flex items-center space-x-2">
-                <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600">
-                  <Sparkles className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-stone-900 font-serif">Indian Grocery & Weight Voice Guide</h3>
-                  <p className="text-xs text-stone-500">Supported commands and proportional weight calculations</p>
-                </div>
-              </div>
-              <button onClick={() => setShowHelpModal(false)} className="text-stone-400 hover:text-stone-700 p-1 rounded-lg">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
-              <div className="bg-stone-50 p-3.5 rounded-xl border border-stone-200/80 space-y-2">
-                <p className="font-bold text-stone-900 flex items-center gap-1.5">
-                  ⚖️ <span>Proportional Weight Pricing</span>
-                </p>
-                <ul className="space-y-1.5 text-stone-600">
-                  <li>• <code className="bg-white px-1.5 py-0.5 rounded border font-mono">"Add 250g tomatoes"</code> (₹10 @ ₹40/kg)</li>
-                  <li>• <code className="bg-white px-1.5 py-0.5 rounded border font-mono">"Add 500g onions"</code> (₹25 @ ₹50/kg)</li>
-                  <li>• <code className="bg-white px-1.5 py-0.5 rounded border font-mono">"Add 100g coriander"</code> (₹10 @ ₹100/kg)</li>
-                  <li>• <code className="bg-white px-1.5 py-0.5 rounded border font-mono">"1 dozen bananas"</code> (₹60/dozen)</li>
-                </ul>
-              </div>
-
-              <div className="bg-stone-50 p-3.5 rounded-xl border border-stone-200/80 space-y-2">
-                <p className="font-bold text-stone-900 flex items-center gap-1.5">
-                  🔥 <span>Deals & Replenishment</span>
-                </p>
-                <ul className="space-y-1.5 text-stone-600">
-                  <li>• <code className="bg-white px-1.5 py-0.5 rounded border font-mono">"Show today's deals"</code></li>
-                  <li>• <code className="bg-white px-1.5 py-0.5 rounded border font-mono">"What am I running low on?"</code></li>
-                  <li>• <code className="bg-white px-1.5 py-0.5 rounded border font-mono">"Suggest substitute for butter"</code></li>
-                </ul>
-              </div>
-            </div>
-
-            <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3 flex items-center justify-between text-xs text-stone-700">
-              <span>💡 <strong>Tip:</strong> Click the weight chips (<strong>100g, 250g, 500g, 1kg</strong>) on any item to calculate prices.</span>
-              <button
-                onClick={() => setShowHelpModal(false)}
-                className="bg-stone-900 hover:bg-stone-800 text-white font-medium px-4 py-1.5 rounded-lg shrink-0 ml-2"
-              >
-                Got it
-              </button>
-            </div>
+{/* Comprehensive Voice Command & Features Guide Modal */}
+{showHelpModal && (
+  <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+    <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 sm:p-7 space-y-6 shadow-2xl border border-stone-200">
+      
+      {/* Modal Header */}
+      <div className="flex items-center justify-between border-b border-stone-100 pb-4">
+        <div className="flex items-center space-x-3">
+          <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-stone-900 font-serif">
+              Voice Commands & Shopping Guide
+            </h3>
+            <p className="text-xs text-stone-500">
+              Speak naturally in English or हिन्दी — all commands below are fully supported
+            </p>
           </div>
         </div>
-      )}
+        <button 
+          onClick={() => setShowHelpModal(false)}
+          className="text-stone-400 hover:text-stone-700 p-1.5 rounded-lg hover:bg-stone-100 transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Guide Feature Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+        
+        {/* 1. Weight-Based Produce Pricing */}
+        <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200/80 space-y-2.5">
+          <p className="font-bold text-stone-900 flex items-center gap-2 text-sm">
+            <span>⚖️</span> <span>Weight-Based Pricing (₹/kg & Dozens)</span>
+          </p>
+          <p className="text-stone-500 text-[11px] leading-relaxed">
+            Prices calculate automatically based on standard Indian market rates per kg:
+          </p>
+          <ul className="space-y-1.5 text-stone-700 font-mono text-[11px]">
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Add 250g tomatoes" <span className="text-emerald-700 font-bold">(₹10 @ ₹40/kg)</span>
+            </li>
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Add 500g onions" <span className="text-emerald-700 font-bold">(₹25 @ ₹50/kg)</span>
+            </li>
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Add 100g coriander" <span className="text-emerald-700 font-bold">(₹10 @ ₹100/kg)</span>
+            </li>
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Add 1 dozen bananas" <span className="text-emerald-700 font-bold">(₹60/dozen)</span>
+            </li>
+          </ul>
+        </div>
+
+        {/* 2. Recipe Bundle Decomposer */}
+        <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200/80 space-y-2.5">
+          <p className="font-bold text-stone-900 flex items-center gap-2 text-sm">
+            <span>🍲</span> <span>Recipe Ingredients Bundles</span>
+          </p>
+          <p className="text-stone-500 text-[11px] leading-relaxed">
+            Ask for dish ingredients and the AI unpacks all essential groceries into your basket:
+          </p>
+          <ul className="space-y-1.5 text-stone-700 font-mono text-[11px]">
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Add ingredients for Pav Bhaji" <br />
+              <span className="text-[10px] text-stone-500 font-sans">↳ Adds Aloo, Tamatar, Pav Buns, Butter, Pav Bhaji Masala</span>
+            </li>
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Add ingredients for Chai" <br />
+              <span className="text-[10px] text-stone-500 font-sans">↳ Adds Tea leaves, Milk, Sugar, Adrak, Elaichi</span>
+            </li>
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Add ingredients for Dal Tadka"
+            </li>
+          </ul>
+        </div>
+
+        {/* 3. Daily Flash Deals & Discounts */}
+        <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200/80 space-y-2.5">
+          <p className="font-bold text-stone-900 flex items-center gap-2 text-sm">
+            <span>🔥</span> <span>Live Deals of the Day</span>
+          </p>
+          <p className="text-stone-500 text-[11px] leading-relaxed">
+            Check verified daily discounts on kitchen & dairy staples:
+          </p>
+          <ul className="space-y-1.5 text-stone-700 font-mono text-[11px]">
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Show today's deals and discounts"
+            </li>
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Any special discount on paneer or tea?"
+            </li>
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Show me offers"
+            </li>
+          </ul>
+        </div>
+
+        {/* 4. Healthy Substitutions & In-Cart Swaps */}
+        <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200/80 space-y-2.5">
+          <p className="font-bold text-stone-900 flex items-center gap-2 text-sm">
+            <span>🌿</span> <span>Healthy Product Swaps</span>
+          </p>
+          <p className="text-stone-500 text-[11px] leading-relaxed">
+            Get cleaner dietary alternatives with one-click in-cart swaps:
+          </p>
+          <ul className="space-y-1.5 text-stone-700 font-mono text-[11px]">
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Suggest substitute for butter" <span className="text-amber-800 font-sans">↳ Olive Oil</span>
+            </li>
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Healthy alternative for white sugar" <span className="text-amber-800 font-sans">↳ Jaggery</span>
+            </li>
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Substitute for dairy milk" <span className="text-amber-800 font-sans">↳ Almond Milk</span>
+            </li>
+          </ul>
+        </div>
+
+        {/* 5. Restock & Out-of-Stock Alerts */}
+        <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200/80 space-y-2.5">
+          <p className="font-bold text-stone-900 flex items-center gap-2 text-sm">
+            <span>⏰</span> <span>Smart Restock & Depletion Alerts</span>
+          </p>
+          <p className="text-stone-500 text-[11px] leading-relaxed">
+            Monitors perishability lifecycles (3 days for Milk/Dhaniya, 5 days for Tomatoes, 30 days for Atta/Rice):
+          </p>
+          <ul className="space-y-1.5 text-stone-700 font-mono text-[11px]">
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "What am I running low on?"
+            </li>
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "What is out of stock in my kitchen?"
+            </li>
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Show restock items"
+            </li>
+          </ul>
+        </div>
+
+        {/* 6. Quantity Adjustments & Basket Management */}
+        <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200/80 space-y-2.5">
+          <p className="font-bold text-stone-900 flex items-center gap-2 text-sm">
+            <span>🛒</span> <span>Modify Quantities & Budget</span>
+          </p>
+          <p className="text-stone-500 text-[11px] leading-relaxed">
+            Update portions, remove items, or set spending thresholds:
+          </p>
+          <ul className="space-y-1.5 text-stone-700 font-mono text-[11px]">
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Change tomatoes to 1 kg"
+            </li>
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Remove milk from my basket"
+            </li>
+            <li className="bg-white p-1.5 rounded-lg border border-stone-200">
+              • "Set budget limit to 1500 rupees"
+            </li>
+          </ul>
+        </div>
+
+      </div>
+
+      {/* Footer Info & Close Action */}
+      <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-stone-700">
+        <div className="space-y-0.5">
+          <p className="font-semibold text-emerald-950">
+            💡 Quick Tip: Tap weight chips directly in your basket
+          </p>
+          <p className="text-[11px] text-emerald-800">
+            You can also click the <strong>100g, 250g, 500g, 1kg</strong> chips on any item to instantly recalculate prices.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowHelpModal(false)}
+          className="bg-stone-900 hover:bg-stone-800 text-white font-semibold px-5 py-2 rounded-xl transition-colors shrink-0 shadow-sm"
+        >
+          Got it
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
     </main>
   );
 }
