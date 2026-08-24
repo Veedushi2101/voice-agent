@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useShoppingStore } from './useShoppingStore';
+import { useShoppingStore, resolveSubstitute } from './useShoppingStore';
 
 export function useVoiceAssistant() {
   const {
@@ -12,7 +12,6 @@ export function useVoiceAssistant() {
     setTranscript,
     addItem,
     removeItem,
-    updateQuantityByName,
     setSearchResults,
     setSuggestions,
     setBudgetLimit,
@@ -56,33 +55,40 @@ export function useVoiceAssistant() {
 
       const data = await res.json();
 
-      // Guarded Cart Additions: Only run if items array actually contains items
+      // Handle Individual Item Adds & Multi-Item Recipe Bundles
       if ((data.action === 'ADD' || data.action === 'ADD_BUNDLE') && Array.isArray(data.items) && data.items.length > 0) {
         data.items.forEach((item: any) => {
-          if (item && item.name && item.name.trim()) {
+          if (item && item.name && String(item.name).trim()) {
+            const rawName = String(item.name).trim();
             addItem({
-              name: item.name,
+              name: rawName,
               quantity: Number(item.quantity) || 1,
-              unit: item.unit || 'unit',
-              category: item.category || 'Pantry',
-              price: Number(item.price) || 60,
+              unit: item.unit && String(item.unit).trim() ? String(item.unit).trim() : '1 unit',
+              category: item.category && String(item.category).trim() ? String(item.category).trim() : 'Pantry',
+              price: Number(item.price) || 40,
               image: item.image || '🛒',
               brand: item.brand || undefined,
               substitutionNote: item.substitutionNote || undefined,
-              substituteSuggestion: item.substituteSuggestion || undefined,
+              substituteSuggestion: item.substituteSuggestion || resolveSubstitute(rawName) || undefined,
             });
           }
         });
       } else if (data.action === 'REMOVE' && Array.isArray(data.items)) {
         data.items.forEach((targetItem: any) => {
-          if (targetItem.name) removeItem(targetItem.name);
+          if (targetItem?.name) removeItem(targetItem.name);
         });
       } else if (data.action === 'UPDATE_QUANTITY' && data.update_target) {
-        updateQuantityByName(
-          data.update_target.name,
-          Number(data.update_target.new_quantity) || 1,
-          data.update_target.new_unit
-        );
+        const targetName = String(data.update_target.name || '').trim().toLowerCase();
+        const existingItem = items.find((item) => item.name.trim().toLowerCase() === targetName);
+
+        if (existingItem) {
+          removeItem(existingItem.name);
+          addItem({
+            ...existingItem,
+            quantity: Number(data.update_target.new_quantity) || 1,
+            unit: data.update_target.new_unit || existingItem.unit,
+          });
+        }
       } else if (data.action === 'SEARCH') {
         setSearchResults(data.search_results || [], cleanText);
       } else if (
@@ -97,7 +103,6 @@ export function useVoiceAssistant() {
         setBudgetLimit(Number(data.budget_limit));
       }
 
-      // Voice and text loopback confirmation
       if (data.ai_response_text) {
         setFeedbackMessage(data.ai_response_text);
         speak(data.ai_response_text);
@@ -108,7 +113,7 @@ export function useVoiceAssistant() {
     } finally {
       setIsProcessing(false);
     }
-  }, [items, purchaseHistory, selectedLanguage, addItem, removeItem, updateQuantityByName, setSearchResults, setSuggestions, setBudgetLimit, speak]);
+  }, [items, purchaseHistory, selectedLanguage, addItem, removeItem, setSearchResults, setSuggestions, setBudgetLimit, speak]);
 
   const stopListening = useCallback(() => {
     if (silenceTimerRef.current) {
