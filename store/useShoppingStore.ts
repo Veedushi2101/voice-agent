@@ -152,6 +152,14 @@ export function calculateProportionalPrice(quantity: number, unit: string, baseP
   return quantity * basePrice;
 }
 
+function normalizeNameForFuzzyMatching(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/\b(fresh|desi|organic|hybrid|royal|bunch|packet|pack|super|the|a|an)\b/gi, '')
+    .replace(/[()]/g, '')
+    .trim();
+}
+
 interface StoreState {
   items: ShoppingItem[];
   savedItems: ShoppingItem[];
@@ -169,8 +177,8 @@ interface StoreState {
   removeItem: (idOrName?: string) => void;
   swapItem: (oldItemId: string, substitute: SubstituteInfo) => void;
   updateQuantityById: (id: string, delta: number) => void;
-  updateQuantityByName: (name: string, newQty: number, newUnit?: string) => void;
   updateWeightPortion: (id: string, newQty: number, newUnit: string) => void;
+  updateQuantityByName: (name: string, newQty: number, newUnit?: string) => void;
   saveForLater: (id: string) => void;
   moveToCart: (id: string) => void;
   checkoutCart: () => void;
@@ -216,9 +224,12 @@ export const useShoppingStore = create<StoreState>()(
           if (!rawName) return state;
 
           const currentItems = Array.isArray(state.items) ? state.items : [];
-          const existing = currentItems.find(
-            (i) => (i?.name || '').toLowerCase() === rawName.toLowerCase()
-          );
+          const normInput = normalizeNameForFuzzyMatching(rawName);
+
+          const existing = currentItems.find((i) => {
+            const normExisting = normalizeNameForFuzzyMatching(i?.name || '');
+            return normExisting === normInput || normExisting.includes(normInput) || normInput.includes(normExisting);
+          });
 
           const autoSub = item.substituteSuggestion || resolveSubstitute(rawName);
           const rawUnit = (item.unit || '1 kg').toLowerCase();
@@ -260,7 +271,7 @@ export const useShoppingStore = create<StoreState>()(
           if (existing) {
             const nextQty = existing.unit === normalizedUnit 
               ? existing.quantity + parsedQty 
-              : existing.quantity;
+              : parsedQty;
 
             return {
               items: currentItems.map((i) =>
@@ -268,7 +279,8 @@ export const useShoppingStore = create<StoreState>()(
                   ? { 
                       ...i, 
                       quantity: nextQty,
-                      price: calculateProportionalPrice(nextQty, i.unit, i.basePrice, i.baseUnit),
+                      unit: normalizedUnit,
+                      price: calculateProportionalPrice(nextQty, normalizedUnit, i.basePrice, i.baseUnit),
                       substituteSuggestion: i.substituteSuggestion || autoSub
                     }
                   : i
@@ -293,6 +305,79 @@ export const useShoppingStore = create<StoreState>()(
           };
 
           return { items: [...currentItems, newItem] };
+        }),
+
+      removeItem: (target) =>
+        set((state) => {
+          if (!target) return state;
+          const searchKey = normalizeNameForFuzzyMatching(String(target));
+          if (!searchKey) return state;
+
+          const currentItems = Array.isArray(state.items) ? state.items : [];
+          const currentSaved = Array.isArray(state.savedItems) ? state.savedItems : [];
+
+          return {
+            items: currentItems.filter((i) => {
+              if (!i) return false;
+              if (i.id === target) return false;
+              const itemName = normalizeNameForFuzzyMatching(i.name || '');
+              return !(itemName === searchKey || itemName.includes(searchKey) || searchKey.includes(itemName));
+            }),
+            savedItems: currentSaved.filter((i) => {
+              if (!i) return false;
+              if (i.id === target) return false;
+              const itemName = normalizeNameForFuzzyMatching(i.name || '');
+              return !(itemName === searchKey || itemName.includes(searchKey) || searchKey.includes(itemName));
+            }),
+          };
+        }),
+
+      updateQuantityByName: (name, newQty, newUnit) =>
+        set((state) => {
+          if (!name) return state;
+          const searchKey = normalizeNameForFuzzyMatching(name);
+          if (!searchKey) return state;
+          const currentItems = Array.isArray(state.items) ? state.items : [];
+
+          let matched = false;
+
+          const updatedItems = currentItems.map((i) => {
+            const itemName = normalizeNameForFuzzyMatching(i?.name || '');
+            if (!matched && (itemName === searchKey || itemName.includes(searchKey) || searchKey.includes(itemName))) {
+              matched = true;
+              
+              let parsedQty = Number(newQty) || 1;
+              let targetUnit = (newUnit || i.unit || 'kg').toLowerCase().trim();
+
+              if (targetUnit.includes('250g') || targetUnit.includes('250 g')) {
+                parsedQty = 250;
+                targetUnit = 'g';
+              } else if (targetUnit.includes('500g') || targetUnit.includes('500 g')) {
+                parsedQty = 500;
+                targetUnit = 'g';
+              } else if (targetUnit.includes('100g') || targetUnit.includes('100 g')) {
+                parsedQty = 100;
+                targetUnit = 'g';
+              } else if (targetUnit.includes('dozen')) {
+                targetUnit = 'dozen';
+              } else if (targetUnit.includes('kg')) {
+                targetUnit = 'kg';
+              } else if (targetUnit.includes('g')) {
+                targetUnit = 'g';
+                parsedQty = parsedQty > 10 ? parsedQty : 250;
+              }
+
+              return {
+                ...i,
+                quantity: parsedQty,
+                unit: targetUnit,
+                price: calculateProportionalPrice(parsedQty, targetUnit, i.basePrice, i.baseUnit),
+              };
+            }
+            return i;
+          }).filter((i) => (Number(i.quantity) || 0) > 0);
+
+          return { items: updatedItems };
         }),
 
       updateWeightPortion: (id, newQty, newUnit) =>
@@ -337,21 +422,6 @@ export const useShoppingStore = create<StoreState>()(
           };
         }),
 
-      removeItem: (target) =>
-        set((state) => {
-          if (!target) return state;
-          const searchKey = String(target).trim().toLowerCase();
-          if (!searchKey) return state;
-
-          const currentItems = Array.isArray(state.items) ? state.items : [];
-          const currentSaved = Array.isArray(state.savedItems) ? state.savedItems : [];
-
-          return {
-            items: currentItems.filter((i) => i && i.id !== target && !(i.name || '').toLowerCase().includes(searchKey)),
-            savedItems: currentSaved.filter((i) => i && i.id !== target && !(i.name || '').toLowerCase().includes(searchKey)),
-          };
-        }),
-
       updateQuantityById: (id, delta) =>
         set((state) => {
           if (!id) return state;
@@ -369,30 +439,6 @@ export const useShoppingStore = create<StoreState>()(
                 };
               })
               .filter((i) => i.quantity > 0),
-          };
-        }),
-
-      updateQuantityByName: (name, newQty, newUnit) =>
-        set((state) => {
-          const searchKey = (name || '').trim().toLowerCase();
-          if (!searchKey) return state;
-          const currentItems = Array.isArray(state.items) ? state.items : [];
-
-          return {
-            items: currentItems
-              .map((i) => {
-                if ((i?.name || '').toLowerCase().includes(searchKey)) {
-                  const targetUnit = newUnit || i.unit;
-                  return {
-                    ...i,
-                    quantity: Math.max(1, Number(newQty) || 1),
-                    unit: targetUnit,
-                    price: calculateProportionalPrice(Number(newQty) || 1, targetUnit, i.basePrice, i.baseUnit)
-                  };
-                }
-                return i;
-              })
-              .filter((i) => (Number(i.quantity) || 0) > 0),
           };
         }),
 
@@ -429,11 +475,11 @@ export const useShoppingStore = create<StoreState>()(
           const now = Date.now();
 
           currentItems.forEach((cartItem) => {
-            const cartName = (cartItem?.name || '').trim().toLowerCase();
+            const cartName = normalizeNameForFuzzyMatching(cartItem?.name || '');
             if (!cartName) return;
 
             const histIndex = updatedHistory.findIndex((h) => {
-              const histName = (h?.name || '').trim().toLowerCase();
+              const histName = normalizeNameForFuzzyMatching(h?.name || '');
               return histName === cartName || histName.includes(cartName) || cartName.includes(histName);
             });
 
@@ -523,6 +569,6 @@ export const useShoppingStore = create<StoreState>()(
       setTranscript: (text) => set({ transcript: String(text || '') }),
       setLanguage: (lang) => set({ selectedLanguage: String(lang || 'en-IN') }),
     }),
-    { name: 'voice-shopping-weight-store-v5' }
+    { name: 'voice-shopping-weight-store-v6' }
   )
 );

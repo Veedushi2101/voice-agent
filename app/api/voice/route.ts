@@ -49,7 +49,6 @@ function calculateDepletedItems(history: any[]) {
   });
 
   if (depleted.length === 0 && safeHistory.length > 0) {
-    // If none strictly exceeded, return the oldest 3 items
     return safeHistory.slice(0, 3).map((item: any) => ({
       name: item.name,
       price: Number(item.price) || 40,
@@ -93,9 +92,71 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No transcript provided' }, { status: 400 });
     }
 
-    const lowerTranscript = transcript.toLowerCase();
+    const lowerTranscript = transcript.toLowerCase().trim();
 
-    // 1. FAST-PATH: Restock / Low on kitchen queries
+    // 1. FAST-PATH: Remove Item Command
+    const isRemoveIntent = /remove|delete|hatao|nikal|cancel/i.test(lowerTranscript);
+    if (isRemoveIntent) {
+      let cleanTarget = lowerTranscript
+        .replace(/^(please\s+)?(remove|delete|hatao|nikal|cancel)\s+/i, '')
+        .replace(/\s+from\s+(my\s+)?(cart|basket|list)$/i, '')
+        .trim();
+
+      if (cleanTarget) {
+        return NextResponse.json({
+          action: 'REMOVE',
+          items: [{ name: cleanTarget }],
+          suggestions: [],
+          ai_response_text: `Removed ${cleanTarget} from your basket.`,
+        });
+      }
+    }
+
+    // 2. FAST-PATH: Update Quantity Command (All variations: "change tomatoes to 2 kg", "make 500g onions", "update milk to 1 litre")
+    const isUpdateIntent = /update|change|make|badlo|karo|set/i.test(lowerTranscript) && /\d+|half|dozen|kg|g|gm|gram|litre|litres|ml/i.test(lowerTranscript);
+    if (isUpdateIntent && !/budget/i.test(lowerTranscript)) {
+      // Pattern A: "change tomatoes to 2 kg" / "update milk into 500ml"
+      let match = lowerTranscript.match(/(?:update|change|make|set)\s+([a-z\s]+?)\s+(?:to|as|into|=)\s+(\d+(?:\.\d+)?)\s*(kg|g|gm|grams|gram|dozen|piece|pcs|litre|litres|ml)?/i);
+      
+      // Pattern B: "make 2 kg tomatoes" / "change 500g onions"
+      if (!match) {
+        match = lowerTranscript.match(/(?:update|change|make|set)\s+(\d+(?:\.\d+)?)\s*(kg|g|gm|grams|gram|dozen|piece|pcs|litre|litres|ml)?\s+(?:of\s+)?([a-z\s]+)/i);
+        if (match) {
+          const newQty = parseFloat(match[1]);
+          const newUnit = match[2] ? match[2].trim() : 'kg';
+          const itemName = match[3].replace(/\s+(in|into|from)\s+(my\s+)?(cart|basket)$/i, '').trim();
+          return NextResponse.json({
+            action: 'UPDATE_QUANTITY',
+            update_target: {
+              name: itemName,
+              new_quantity: newQty,
+              new_unit: newUnit,
+            },
+            items: [],
+            suggestions: [],
+            ai_response_text: `Updated ${itemName} quantity to ${newQty} ${newUnit}.`,
+          });
+        }
+      } else {
+        const itemTargetName = match[1].replace(/\s+(in|into|from)\s+(my\s+)?(cart|basket)$/i, '').trim();
+        const newQuantity = parseFloat(match[2]);
+        const newUnit = match[3] ? match[3].trim() : 'kg';
+
+        return NextResponse.json({
+          action: 'UPDATE_QUANTITY',
+          update_target: {
+            name: itemTargetName,
+            new_quantity: newQuantity,
+            new_unit: newUnit,
+          },
+          items: [],
+          suggestions: [],
+          ai_response_text: `Updated ${itemTargetName} quantity to ${newQuantity} ${newUnit}.`,
+        });
+      }
+    }
+
+    // 3. FAST-PATH: Restock / Low on kitchen queries
     const isRestockIntent = /low|empty|out of stock|khatam|reorder|restock|running low|what is low|need to buy|kitchen/i.test(lowerTranscript);
     if (isRestockIntent && !/add|remove|delete|search/i.test(lowerTranscript)) {
       const lowItems = calculateDepletedItems(purchaseHistory);
@@ -111,7 +172,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // 2. FAST-PATH: Deals & Offers queries
+    // 4. FAST-PATH: Deals & Offers queries
     const isDealIntent = /deal|deals|sale|discount|discounts|offer|offers|sasta|saving/i.test(lowerTranscript);
     if (isDealIntent && !/add|remove|delete/i.test(lowerTranscript)) {
       return NextResponse.json({
@@ -122,15 +183,17 @@ export async function POST(req: Request) {
       });
     }
 
-    // 3. LLM Reasoning for complex voice commands
+    // 5. LLM Fallback Reasoning for remaining voice phrases
     const systemPrompt = `You are a Voice Shopping Assistant for Indian groceries in INR (₹).
 Output strict raw valid JSON only.
 
 Action Types:
-1. "GET_RUNNING_LOW": User asks what is low, depleted, or needs restocking in their kitchen.
-2. "GET_DEALS": User asks for deals or discounts.
-3. "ADD" / "ADD_BUNDLE": Extract items. For each item provide: name, quantity, unit ("100 g", "250 g", "500 g", "1 kg", "1 dozen"), category, basePrice, and baseUnit.
-4. "GET_SUBSTITUTE", "SEARCH", "REMOVE", "UPDATE_QUANTITY", "SET_BUDGET", "INFO", "NOT_FOUND": Handle accordingly.
+1. "UPDATE_QUANTITY": User wants to update/change weight or count of an item in the cart.
+   Template: "update_target": {"name": "tomatoes", "new_quantity": 2, "new_unit": "kg"}
+2. "REMOVE": User wants to remove/delete an item. Set "items": [{"name": "item_name"}].
+3. "GET_RUNNING_LOW": User asks what is low or depleted.
+4. "GET_DEALS": User asks for deals or discounts.
+5. "ADD" / "ADD_BUNDLE": Extract grocery items. Provide name, quantity, unit, category, basePrice, and baseUnit.
 
 JSON Template:
 {
@@ -163,15 +226,6 @@ JSON Template:
     }
 
     if (!rawText) {
-      if (isRestockIntent) {
-        const lowItems = calculateDepletedItems(purchaseHistory);
-        return NextResponse.json({
-          action: 'GET_RUNNING_LOW',
-          items: [],
-          suggestions: lowItems,
-          ai_response_text: "Here are the items that are running low in your kitchen!",
-        });
-      }
       return NextResponse.json({
         action: 'INFO',
         items: [],
@@ -205,12 +259,11 @@ JSON Template:
     return NextResponse.json(parsed);
   } catch (error: any) {
     console.error('Groq Pipeline Error:', error);
-    const lowItems = calculateDepletedItems([]);
     return NextResponse.json({
       action: 'INFO',
       items: [],
-      suggestions: lowItems,
-      ai_response_text: 'I checked your pantry. You have items ready for reorder on your screen!',
+      suggestions: [],
+      ai_response_text: 'Could not process that command. Please try again.',
     });
   }
 }
